@@ -1,34 +1,25 @@
 -module(master).
--export([start/0, accept_requests/0, control/1]).
-
-info(S) ->
-    io:format(string:concat(S, "~n"), []).
+-export([start/0, await_commands/0]).
 
 start() ->
-    info("Starting Master ..."),
-    Master = spawn(master, accept_requests,[]),
-    info("Master spawned"),
-    register(master, Master),
-    info("Master name registered").
+    P = spawn_link(?MODULE, await_commands,[]),
+    register(master, P).
 
-accept_requests() ->
+await_commands() ->
     receive
-        {ready, Bot} ->
-               info("Controlling a new bot!"),
-               spawn(master, control, [Bot])
+        {Robot, measurement, Location, Timestamp, Key, Value} ->
+            measurements:store(Location, Timestamp, Key, Value);
+        {Robot, alert, Location, Timestamp, Message} ->
+            measurements:store(Location, Timestamp, alert, Message),
+            Action = analyser:analyse_alert(Message),
+            case Action of
+                reboot ->
+                    Robot ! reboot;
+                shutdown ->
+                    Robot ! shutdown;
+                _ ->
+                    ok
+            end
     end,
-    accept_requests().
-
-control(Bot) ->
-    info("Sending message test"),
-    Bot ! test,
-    info("Sending message test2"),
-    Bot ! test2,
-    info("Bot controller going to sleep"),
-    timer:sleep(timer:seconds(5)),
-    info("Bot controller woke up!"),
-    control(Bot).
-
-
-
+    await_commands().
 
